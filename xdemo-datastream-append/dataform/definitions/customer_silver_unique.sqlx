@@ -1,0 +1,15 @@
+config {
+  type: "assertion",
+  name: "customer_silver_unique",
+  description: "Validates that each customer_id appears exactly once in Silver (Hard CDC)",
+  tags: ["assertion", "data_quality", "hard_cdc"]
+}
+
+-- This assertion FAILS if any customer_id appears more than once
+-- An empty result set = PASS (no duplicates found)
+SELECT 
+  customer_id, 
+  COUNT(*) as duplicate_count
+FROM ${ref("customer_silver")}
+GROUP BY customer_id
+HAVING COUNT(*) > 1

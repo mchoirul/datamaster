@@ -1,0 +1,8 @@
+{
+  "name": "datastream-append-demo",
+  "version": "1.0.0",
+  "description": "Dataform transformations for Datastream append-only CDC to Silver layer",
+  "dependencies": {
+    "@dataform/core": "^3.0.0"
+  }
+}

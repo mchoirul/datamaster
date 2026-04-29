@@ -1,0 +1,6 @@
+{
+  "defaultSchema": "YOUR_DATASET_ID",
+  "assertionSchema": "YOUR_ASSERTION_DATASET_ID",
+  "defaultDatabase": "YOUR_PROJECT_ID",
+  "defaultLocation": "us-central1"
+}

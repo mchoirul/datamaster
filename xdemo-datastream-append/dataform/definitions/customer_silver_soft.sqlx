@@ -1,0 +1,88 @@
+config {
+  type: "incremental",
+  name: "customer_silver_soft",
+  description: "Soft CDC Silver layer - Current state with payload-based is_deleted handling",
+  uniqueKey: ["customer_id"],
+  bigquery: {
+    partitionBy: "DATE(_last_sync_timestamp)",
+    clusterBy: ["customer_id"]
+  },
+  tags: ["soft_cdc", "silver", "customer"]
+}
+
+/*
+🔧 CORRECTED: pre_operations now uses proper deduplication logic
+CRITICAL FIX: Only delete customers where the LATEST event has is_deleted=TRUE
+In Soft CDC, Datastream sees deletes as UPDATEs, so we must check the payload
+*/
+pre_operations {
+  ${when(incremental(), `
+  -- Step 1: Delete customers whose LATEST event in the incremental window has is_deleted=TRUE
+  DELETE FROM ${self()}
+  WHERE customer_id IN (
+    -- Subquery: Find customers where the most recent event is a soft delete
+    SELECT customer_id 
+    FROM (
+      SELECT 
+        customer_id,
+        is_deleted,
+        -- Deduplication: Rank events by timestamp (most recent = 1)
+        ROW_NUMBER() OVER (
+          PARTITION BY customer_id 
+          ORDER BY 
+            datastream_metadata.source_timestamp DESC,
+            datastream_metadata.change_sequence_number DESC
+        ) as row_num
+      FROM ${ref("public_soft_customer_bronze")}
+      WHERE 
+        -- Incremental filter: 20-minute lookback window to catch late-arriving events
+        TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) >= 
+          COALESCE(
+            (SELECT TIMESTAMP_SUB(MAX(_last_sync_timestamp), INTERVAL 20 MINUTE) FROM ${self()}),
+            TIMESTAMP('2020-01-01')
+          )
+    )
+    -- Only include customers where the latest event (row_num=1) is a soft delete
+    WHERE row_num = 1 AND is_deleted = TRUE
+  )
+  `, `
+  -- No-op for initial run to prevent syntax error from empty pre_operations block
+  SELECT 1
+  `)}
+}
+
+/*
+Main SELECT: Upsert logic for active records (is_deleted=FALSE)
+Dataform's incremental mode will automatically MERGE this data based on uniqueKey
+*/
+SELECT * EXCEPT(row_num)
+FROM (
+  SELECT 
+    customer_id,
+    name,
+    email,
+    status,
+    total_purchases,
+    country,
+    created_at,
+    updated_at,
+    is_deleted,
+    deleted_at,
+    CURRENT_TIMESTAMP() as _last_sync_timestamp,
+    -- Deduplication: Keep only the latest version of each customer
+    ROW_NUMBER() OVER (
+      PARTITION BY customer_id 
+      ORDER BY 
+        datastream_metadata.source_timestamp DESC,
+        datastream_metadata.change_sequence_number DESC
+    ) as row_num
+  FROM ${ref("public_soft_customer_bronze")}
+  WHERE 1=1
+    -- Incremental filter: 20-minute lookback window to catch late-arriving events
+    ${when(incremental(), `AND TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) >= 
+      COALESCE(
+        (SELECT TIMESTAMP_SUB(MAX(_last_sync_timestamp), INTERVAL 20 MINUTE) FROM ${self()}),
+        TIMESTAMP('2020-01-01')
+      )`)}
+)
+WHERE row_num = 1 AND is_deleted = FALSE

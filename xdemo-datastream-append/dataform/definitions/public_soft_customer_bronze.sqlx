@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: "YOUR_PROJECT_ID",
+  schema: "YOUR_DATASET_ID",
+  name: "public_soft_customer_bronze",
+  description: "Soft CDC Bronze table - Datastream append-only source with payload-based is_deleted flag"
+}

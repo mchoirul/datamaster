@@ -1,0 +1,32 @@
+config {
+  type: "assertion",
+  name: "customer_silver_soft_no_deletes",
+  description: "Validates that no customers whose latest Bronze event has is_deleted=TRUE exist in Silver (Soft CDC)",
+  tags: ["assertion", "data_quality", "soft_cdc", "delete_validation"]
+}
+
+-- This assertion FAILS if any soft-deleted customers still exist in Silver
+-- An empty result set = PASS (no soft-deleted customers in Silver)
+WITH latest_bronze_events AS (
+  SELECT * EXCEPT(row_num)
+  FROM (
+    SELECT 
+      customer_id,
+      is_deleted,
+      ROW_NUMBER() OVER (
+        PARTITION BY customer_id 
+        ORDER BY 
+          datastream_metadata.source_timestamp DESC,
+          datastream_metadata.change_sequence_number DESC
+      ) as row_num
+    FROM ${ref("public_soft_customer_bronze")}
+  )
+  WHERE row_num = 1
+)
+SELECT 
+  s.customer_id,
+  b.is_deleted as latest_bronze_state
+FROM ${ref("customer_silver_soft")} s
+JOIN latest_bronze_events b 
+  ON s.customer_id = b.customer_id
+WHERE b.is_deleted = TRUE
