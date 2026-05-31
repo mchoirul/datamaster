@@ -317,24 +317,24 @@ The table below summarizes our empirical findings against official documentation
 
 ---
 
-## 🛠| Recommended Baseline Configuration
+## 🛠️ Reference Baseline Configuration
 
 **The Scaling Journey:** We started our testing with a standard **Medium environment preset** (2vCPU schedulers, 2vCPU workers). By applying the lessons above—specifically utilizing deferrable operators and explicit concurrency controls—we successfully **scaled down** the infrastructure to a near-Small footprint while *maintaining* a 140-concurrent task throughput with 0 failures. The impact is significant: deferrable operators allow you to achieve Medium/Large-tier concurrency on Small-tier worker/triggerer compute, provided you balance the schedulers correctly.
 
 For deferrable workloads running hundreds of concurrent tasks, based on our final successful test runs, we recommend the following baseline:
 
-| Component | Setting | Rationale |
-|-----------|---------|-----------|
-| **Scheduler** | `count: 2`, `cpu: 0.5`, `mem: 2GB` | Prevents DB contention on task state transitions (Lesson 1) |
-| **Worker** | `cpu: 1`, `mem: 4GB`, `min: 1`, `max: 6` | Sufficient for brief init/callback bursts (Lesson 2) |
-| **Triggerer** | `count: 1`, `cpu: 0.5`, `mem: 1GB` | Async event loop handles hundreds of triggers (Lesson 5) |
-| **Web Server** | `cpu: 1`, `mem: 2GB` | Prevents CLI timeouts (Lesson 9) |
-| **DAG Processor** | `count: 1`, `cpu: 1`, `mem: 2GB` | Standard DAG parsing |
-| **worker_concurrency** | `8` (explicit) | Predictable autoscaling, avoid auto pitfalls (Lessons 2, 3) |
-| **default_pool** | `slots: 1000`, `include_deferred: True` | Explicit control avoids stuck queued tasks (Lesson 4) |
-| **max_active_tasks_per_dag** | `80` | Allows full DAG concurrency (Lesson 8) |
-| **parallelism** | Remove override (let default 0) | Composer 3 default is effectively unlimited (Lesson 7) |
-| **External service** | Scale to match peak concurrency | Downstream capacity is the real bottleneck (Lesson 6) |
+| Component | Default Configuration | Recommended Setting | Rationale |
+|-----------|-----------------------|---------------------|-----------|
+| **Scheduler** | `count: 2`, `cpu: 2`, `mem: 7.5GB` | `count: 2`, `cpu: 0.5`, `mem: 2GB` | Prevents DB contention on task state transitions (Lesson 1) |
+| **Worker** | `cpu: 2`, `mem: 7.5GB`, `min: 2`, `max: 6` | `cpu: 1`, `mem: 4GB`, `min: 1`, `max: 6` | Sufficient for brief init/callback bursts (Lesson 2) |
+| **Triggerer** | `count: 2`, `cpu: 0.5`, `mem: 1GB` | `count: 1`, `cpu: 0.5`, `mem: 1GB` | Async event loop handles hundreds of triggers (Lesson 5) |
+| **Web Server** | `cpu: 2`, `mem: 7.5GB` | `cpu: 1`, `mem: 2GB` | Prevents CLI timeouts (Lesson 9) |
+| **DAG Processor** | `count: 1`, `cpu: 2`, `mem: 7.5GB` | `count: 1`, `cpu: 1`, `mem: 2GB` | Standard DAG parsing |
+| **worker_concurrency** | Auto-calculated (~12) | `8` (explicit) | Predictable autoscaling, avoid auto pitfalls (Lessons 2, 3) |
+| **default_pool** | `slots: 128`, `include_deferred: False` | `slots: 1000`, `include_deferred: True` | Explicit control avoids stuck queued tasks (Lesson 4) |
+| **max_active_tasks_per_dag** | `16` | `80` | Allows full DAG concurrency (Lesson 8) |
+| **parallelism** | `0` (effectively unlimited) | Remove override (let default 0) | Composer 3 default is effectively unlimited (Lesson 7) |
+| **External service** | N/A (Unscaled/Single-instance) | Scale to match peak concurrency | Downstream capacity is the real bottleneck (Lesson 6) |
 
 ---
 
