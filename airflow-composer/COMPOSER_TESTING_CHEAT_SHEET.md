@@ -264,22 +264,3 @@ while true; do
     sleep 30
 done
 
----
-## 8. Repository Management (Publishing Results)
-
-# Clone the target repository
-git clone https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git \
-    /path/to/local/repo
-
-# Stage new files
-git add airflow-composer/
-
-# Commit with descriptive message
-git commit -m "docs: Add Cloud Composer 3 Deferrable Operators playbook"
-
-# Push using Personal Access Token
-git push https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git main
-
-# Amend an existing commit (if needed)
-git commit --amend -m "docs: Updated playbook with capacity math and baseline config"
-git push https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git main --force
