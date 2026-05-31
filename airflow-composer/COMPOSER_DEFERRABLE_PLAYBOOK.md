@@ -8,7 +8,7 @@ A practical guide to configuring and scaling Apache Airflow on Cloud Composer 3 
 
 ---
 
-## 🏗️ The Deferable Operator & The Three Concurrency Gates
+## 🏗️ The Deferable Operator & Three Concurrency Gates
 
 Traditional Airflow tuning relies on scaling up workers. When running a high volume of lightweight tasks (like API polling, sensors, or Airbyte syncs), tasks historically had to pass through **three sequential bottleneck gates**.
 
