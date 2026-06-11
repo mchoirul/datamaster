@@ -6,38 +6,45 @@
 
 ## 1. Data Type Mapping Reference
 
-BigQuery uses a simplified set of data types compared to SQL Server. All integer types collapse to `INT64`, all string types collapse to `STRING`, etc.
+When migrating from Microsoft SQL Server to Google Cloud BigQuery, you must account for data type conversions at two distinct levels:
+1. **Query & DDL Translation (GoogleSQL Dialect)**: Standard SQL mappings used by the SQL Translator when converting schemas, views, and stored procedures.
+2. **Data Transfer Service (DTS) Schema Ingestion**: The default mappings automatically applied when using the official BigQuery Data Transfer Service connector.
 
-| SQL Server (T-SQL) Type | BigQuery (GoogleSQL) Type | Migration Notes & Caveats |
-| :--- | :--- | :--- |
-| `TINYINT` | `INT64` | Widens from 1-byte unsigned (0–255) to 8-byte signed. No data loss. |
-| `SMALLINT` | `INT64` | Widens from 2-byte signed to 8-byte signed. No data loss. |
-| `INT` | `INT64` | Widens from 4-byte signed to 8-byte signed. No data loss. |
-| `BIGINT` | `INT64` | Maps 1:1 (both 8-byte signed). |
-| `CHAR(n)`, `NCHAR(n)` | `STRING` | BigQuery `STRING` is variable-length UTF-8. Fixed-length padding is not preserved. |
-| `VARCHAR(n)`, `NVARCHAR(n)` | `STRING` | BigQuery does **not** enforce `(n)` length limits at the schema level. |
-| `VARCHAR(MAX)`, `NVARCHAR(MAX)` | `STRING` | Maps directly. Max `STRING` size in BigQuery is 10 MB. |
-| `TEXT`, `NTEXT` | `STRING` | Deprecated in SQL Server; maps to `STRING`. |
-| `DECIMAL(p,s)`, `NUMERIC(p,s)` | `NUMERIC(P,S)` or `BIGNUMERIC(P,S)` | `NUMERIC` supports max precision 29, scale 9. `BIGNUMERIC` supports max precision 76, scale 38. `DECIMAL` is an alias for `NUMERIC` in BigQuery. ([Ref](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#numeric_type)) |
-| `MONEY` | `NUMERIC` | `MONEY` has 4 decimal places. Map to `NUMERIC(19,4)`. |
-| `SMALLMONEY` | `NUMERIC` | Map to `NUMERIC(10,4)`. |
-| `REAL` | `FLOAT64` | Widens from single-precision to double-precision. Minor rounding differences possible. |
-| `FLOAT(n)` | `FLOAT64` | BigQuery only has double-precision `FLOAT64`. |
-| `DATE` | `DATE` | Maps 1:1. Range: 0001-01-01 to 9999-12-31. |
-| `TIME` | `TIME` | Maps 1:1. Microsecond precision in BigQuery vs. 100-nanosecond in SQL Server. |
-| `DATETIME` | `DATETIME` | Both timezone-independent. BigQuery `DATETIME` has microsecond precision vs. ~3.33ms in SQL Server. |
-| `DATETIME2(n)` | `DATETIME` | BigQuery `DATETIME` has microsecond (6-digit) precision. SQL Server `DATETIME2(7)` has 100-nanosecond precision — **sub-microsecond data will be truncated**. |
-| `SMALLDATETIME` | `DATETIME` | Minute precision widens to microsecond precision. No data loss. |
-| `DATETIMEOFFSET` | `TIMESTAMP` | `TIMESTAMP` in BigQuery is an absolute point in time stored in UTC. The original offset is **not preserved** — only the UTC-normalized value is stored. ([Ref](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#timestamp_type)) |
-| `BINARY(n)`, `VARBINARY(n)` | `BYTES` | Variable-length binary data. |
-| `VARBINARY(MAX)`, `IMAGE` | `BYTES` | `IMAGE` is deprecated in SQL Server. Maps to `BYTES`. |
-| `BIT` | `BOOL` | **Caveat:** `BOOL` does not implicitly cast to/from integers. `WHERE bit_col = 1` must become `WHERE bool_col = TRUE`. |
-| `UNIQUEIDENTIFIER` | `STRING` | Stored as a string representation. Generate new UUIDs with `GENERATE_UUID()`. ([Ref](https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-and-operators#generate_uuid)) |
-| `XML` | `STRING` | BigQuery has no native XML type. Parse with UDFs or pre-process in ETL. |
-| `SQL_VARIANT` | `STRING` or `JSON` | No equivalent. Serialize to `STRING` or use native `JSON` type. |
-| `GEOGRAPHY` / `GEOMETRY` | `GEOGRAPHY` | BigQuery supports `GEOGRAPHY` (WGS84 spherical). SQL Server `GEOMETRY` (planar) must be reprojected. ([Ref](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#geography_type)) |
-| `HIERARCHYID` | `STRING` | No native equivalent. Serialize the hierarchy path as a string. |
-| `JSON` (SQL Server 2016+) | `JSON` | BigQuery has a native `JSON` type for semi-structured data. ([Ref](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#json_type)) |
+For the authoritative Google Cloud schema ingestion reference, see the official [BigQuery SQL Server Data Transfer Service Type Mapping Guide](https://docs.cloud.google.com/bigquery/docs/sqlserver-transfer#data_type_mapping).
+
+### Data Type Mapping Table
+
+| SQL Server Type | Query Translator Type (GoogleSQL) | DTS Connector Ingestion Type | Migration Notes & Caveats |
+| :--- | :--- | :--- | :--- |
+| `TINYINT` | `INT64` | `INTEGER` | Widens from 1-byte unsigned (0–255) to 8-byte signed. No data loss. (`INTEGER` is a query-level alias for `INT64` in BigQuery). |
+| `SMALLINT` | `INT64` | `INTEGER` | Widens from 2-byte signed to 8-byte signed. No data loss. |
+| `INT` | `INT64` | `INTEGER` | Widens from 4-byte signed to 8-byte signed. No data loss. |
+| `BIGINT` | `INT64` | `BIGNUMERIC` | Dialect translation maps directly to `INT64`. DTS connector uses `BIGNUMERIC` by default to prevent overflow. |
+| `BIT` | `BOOL` | `BOOLEAN` | Boolean type (`BOOLEAN` is an alias for `BOOL`). **Caveat:** `BOOL` does not implicitly cast to/from integers; `WHERE bit_col = 1` must be refactored to `WHERE bool_col = TRUE`. |
+| `DECIMAL(p,s)` / `NUMERIC(p,s)` | `NUMERIC(p,s)` or `BIGNUMERIC(p,s)` | `BIGNUMERIC` (for `DECIMAL`) / `NUMERIC` (for `NUMERIC`) | `NUMERIC` supports precision ≤ 38, scale ≤ 9. `BIGNUMERIC` supports precision ≤ 76, scale ≤ 38. `DECIMAL` is a dialect alias for `NUMERIC` in BigQuery. |
+| `MONEY` | `NUMERIC(19,4)` | `BIGNUMERIC` | Maps to high-precision decimal. |
+| `SMALLMONEY` | `NUMERIC(10,4)` | `BIGNUMERIC` | Maps to high-precision decimal. |
+| `FLOAT` / `REAL` | `FLOAT64` | `FLOAT` | Widens to double-precision `FLOAT64` (`FLOAT` is an alias for `FLOAT64` in BigQuery). Minor rounding differences possible. |
+| `DATE` | `DATE` | `DATE` | Maps 1:1. Range: 0001-01-01 to 9999-12-31. |
+| `TIME` | `TIME` | `TIME` | Maps 1:1. Microsecond precision in BigQuery vs. 100-nanosecond in SQL Server. |
+| `DATETIME` | `DATETIME` | `TIMESTAMP` (*`DATETIME` after March 16, 2027*) | SQL Server is timezone-independent. DTS historically loaded as `TIMESTAMP` in UTC, but is being updated to load as `DATETIME` on March 16, 2027 to align with query semantics. ([Ref](https://cloud.google.com/bigquery/docs/transfer-changes#Mar16-sqlserver)) |
+| `DATETIME2` | `DATETIME` | `TIMESTAMP` (*`DATETIME` after March 16, 2027*) | BigQuery `DATETIME` has microsecond precision. Sub-microsecond (100ns) data from `DATETIME2(7)` will be truncated. |
+| `SMALLDATETIME` | `DATETIME` | `TIMESTAMP` (*`DATETIME` after March 16, 2027*) | Minute precision widens to microsecond precision. No data loss. |
+| `DATETIMEOFFSET` | `TIMESTAMP` | `TIMESTAMP` | Stored as UTC. Original offset timezone indicator is **not preserved** — only UTC-normalized point in time. |
+| `CHAR(n)` / `NCHAR(n)` | `STRING` | `STRING` | Fixed-length padding is not preserved in BigQuery's variable-length UTF-8 `STRING`. |
+| `VARCHAR(n)` / `NVARCHAR(n)` | `STRING` | `STRING` | BigQuery does not enforce `(n)` length limits at the schema level unless parameterized. |
+| `VARCHAR(MAX)` / `NVARCHAR(MAX)` | `STRING` | `STRING` | Maps directly. Max `STRING` size in BigQuery is 10 MB. |
+| `TEXT` / `NTEXT` | `STRING` | `STRING` | Deprecated SQL Server types map to standard `STRING`. |
+| `BINARY(n)` / `VARBINARY(n)` | `BYTES` | `BYTES` | Fixed and variable-length binary data maps to variable-length `BYTES`. |
+| `VARBINARY(MAX)` / `IMAGE` | `BYTES` | `BYTES` | Deprecated SQL Server `IMAGE` maps to `BYTES`. |
+| `GEOGRAPHY` / `GEOMETRY` | `GEOGRAPHY` | `STRING` | DTS loads spatial objects as WKT/WKB `STRING` representation. For GIS queries, convert using GoogleSQL `ST_GEOGFROMTEXT()` or `ST_GEOGFROMWKB()`. |
+| `HIERARCHYID` | `STRING` | `BYTES` | DTS loads raw byte path. Dialect query translation parses hierarchies using `STRING` paths. |
+| `ROWVERSION` | `BYTES` | `BYTES` | Stored as raw sequence bytes. |
+| `SQL_VARIANT` | `STRING` or `JSON` | `BYTES` | Custom serialization needed for query translation; DTS loads raw bytes. |
+| `UNIQUEIDENTIFIER` | `STRING` | `STRING` | Stored as canonical string representation. Generate new values via `GENERATE_UUID()`. |
+| `XML` | `STRING` | `STRING` | No native XML type in BigQuery. Store as `STRING` and query via Javascript UDFs or preprocess during ETL. |
+| `JSON` | `JSON` | `STRING` | BigQuery native `JSON` type used for semi-structured querying. Note: `JSON` type in DTS ingestion is currently supported for Azure sources. |
+| `VECTOR` | `STRING` | `STRING` | Vector type only supported in Azure sources by DTS connector. |
 
 > [!WARNING]
 > **Data Loss Prevention:** Some migration tools (e.g., BigQuery Data Transfer Service) may map numeric types **without** explicitly defined precision/scale to `STRING` to prevent silent truncation. Always verify the schema assessment from your migration tool.
@@ -210,3 +217,24 @@ BigQuery uses a simplified set of data types compared to SQL Server. All integer
 | Table Constraints | https://cloud.google.com/bigquery/docs/information-schema-table-constraints |
 | Migration Service | https://cloud.google.com/bigquery/docs/migration-intro |
 | SQL Translation | https://cloud.google.com/bigquery/docs/migration/sql-translation |
+| SQL Server Data Transfer Service Mapping | https://docs.cloud.google.com/bigquery/docs/sqlserver-transfer#data_type_mapping |
+
+---
+
+## 6. SQL Translation Service Setup & Permissions
+
+To set up the BigQuery SQL Translation Service, the following project configuration and IAM roles are required:
+
+### 6.1 Required API
+*   **BigQuery Migration API** (`bigquerymigration.googleapis.com`) must be enabled.
+
+### 6.2 IAM Roles & Permissions
+*   **Recommended Role**: **`roles/bigquerymigration.editor`** (Migration Workflow Editor) is required to run translation workflows.
+*   **Cloud Storage Access**: For batch translation, the executing account must also be granted the **`roles/storage.objectUser`** role on the GCS buckets used for input/output files.
+
+> [!CAUTION]
+> **Critical Permission Deprecation Warning**
+> The permission **`bigquerymigration.translation.translate`** is deprecated and will stop working on **2026-09-08**.
+> *   Do not use custom roles or legacy configurations relying on `bigquerymigration.translation.translate`.
+> *   Ensure all users and automated pipelines migrate to using **`bigquerymigration.workflows.create`** and **`bigquerymigration.workflows.get`** instead.
+
