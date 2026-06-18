@@ -1,0 +1,8 @@
+type: object_rewriter
+relation:
+- match:
+    schema: "dbo"
+  outputName:
+    database: "mydataplex"
+    schema: "sales"
+    relation: "${relation}"

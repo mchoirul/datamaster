@@ -165,6 +165,20 @@ Batch translation is designed to process hundreds of SQL files or full database 
 
 ---
 
+### 3. Transform Translations using Configuration YAML Files
+
+The translation service supports custom configuration YAML files (e.g., to transform object names, schemas, or data types).
+Follow the [official configuration YAML file requirements](https://docs.cloud.google.com/bigquery/docs/config-yaml-translation#configuration_yaml_file_requirements) carefully:
+
+1. **Upload Location**: Configuration YAML files must be uploaded in the directory of the Cloud Storage bucket that contains your SQL translation input files.
+2. **File Size Limits**:
+   - The file size for a single configuration YAML file must not exceed **1 MB**.
+   - The total file size of all configuration YAML files used in a single SQL translation job must not exceed **4 MB**.
+3. **Regex Syntax**: If you are using `regex` syntax for name matching, use **RE2/J**.
+4. **File Naming**: All configuration YAML file names must include a `.config.yaml` extension (e.g., `change-case.config.yaml`). The name `config.yaml` alone is not valid.
+
+---
+
 ## Migration Caveats & Key Architectural Considerations
 
 While the BigQuery SQL Translation Service is highly accurate, automatic translators cannot resolve fundamental differences in platform architecture. Before running translation or deploying generated SQL, review [sql_server_to_bigquery_caveats.md](file:///home/choirul/antigrav/bigquerymigration/sqlserver-bq-migrate/sql_server_to_bigquery_caveats.md) for comprehensive mapping tables and workarounds.
